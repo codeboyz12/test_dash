@@ -61,40 +61,77 @@ def recently_table():
         ]
     )
 
-def generate_table(dataframe=recently_mock(), max_rows=10):
-    cell_style = {
-        'border': '1px solid black',
-        'textAlign': 'center',
-        'padding': '5px 5px'
-    }
+def main_table():
+    df = recently_mock()
 
-    header_cell_style = {
-        'border': '1px solid black',
-        'textAlign': 'center',
-        'padding': '10px 5px',
-        'color': 'white',
-        'backgroundColor': '#003354'
-    }
+    # สร้าง DataTable พร้อม style
+    return dash_table.DataTable(
+        data=df.to_dict('records'),
+        columns=[
+            {"name": i, "id": i} for i in df.columns
+        ],
 
-    return html.Table(
-        [html.Thead(html.Tr([
-            html.Th(col, style=header_cell_style) for col in dataframe.columns
-        ]))] +
-
-        [html.Tbody([
-            html.Tr([
-                html.Td(dataframe.iloc[0][col], style=cell_style) 
-                for col in dataframe.columns
-            ])
-        ])],
-
-        style={
-            'border': '1px solid black',
-            'borderCollapse': 'collapse',
+        # ขนาดพื้นฐานของ cell / alignment / overflow
+        style_cell={
+            'padding': '8px',
             'textAlign': 'center',
-            'margin': '0px 15px'
-        }
+            'whiteSpace': 'normal',
+            'height': 'auto',
+            'overflow': 'hidden',
+        },
+
+        # style สำหรับ header
+        style_header={
+            'backgroundColor': '#4a4a4a',
+            'fontWeight': 'bold',
+            'color': 'white',
+            'border': '1px solid #d0d0d0'
+        },
+
+        # style สำหรับ data cells (default)
+        style_data={
+            'backgroundColor': 'white',
+            'color': 'black',
+            'border': '1px solid #d0d0d0'
+        },
+
+        # conditional styling เช่น highlight ตามเงื่อนไข
+        style_data_conditional = [
+            *[
+                {
+                    "if": {
+                        "filter_query": f"{{{col}}} < 45",
+                        "column_id": col
+                    },
+                    "color": "green",
+                    "fontWeight": "bold"
+                }
+                for col in df.columns
+            ],
+
+            # ช่วงที่ 2: ค่ามากกว่า 55 => สีแดง
+            *[
+                {
+                    "if": {
+                        "filter_query": f"{{{col}}} > 55",
+                        "column_id": col
+                    },
+                    "color": "red",
+                    "fontWeight": "bold"
+                }
+                for col in df.columns
+            ],
+        ],
+        # ถ้าต้องการให้ table มีลักษณะ list view (ไม่มี vertical grid)
+        # style_as_list_view=True,
+
+        # สามารถตั้งค่า pagination, sorting, filtering ได้เพิ่มเติม
+        page_action='native',
+        page_size=10,
+        sort_action='native',
+        filter_action='native',
     )
+
 
 def main_chart(title):
     data = combined_df()

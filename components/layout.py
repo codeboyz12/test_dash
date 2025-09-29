@@ -25,7 +25,9 @@ def layout():
                     "color": "#0075b2"
                 }
             ),
-            recently_table()
+            recently_table(),
+
+            main_table()
 
         ], style={
             "height": "100vh",
