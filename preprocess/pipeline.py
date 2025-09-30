@@ -87,7 +87,7 @@
 """
 
 
-from detector import AnomalyDetector
+from preprocess.detector import AnomalyDetector
 from collections import deque
 import numpy as np
 import pandas as pd
@@ -101,7 +101,8 @@ from typing import Dict, Any
 import shap
 from xgboost import XGBRegressor
 from sklearn.model_selection import TimeSeriesSplit
-from utils import Utils
+from preprocess.multistage import MultiStageDetector
+from preprocess.utils import Utils
 
 warnings.filterwarnings('ignore')
 
@@ -353,7 +354,7 @@ def ethanol_pipeline_full_with_ga(
         ga_res = None
         if bounds_list:
             if ga_optimizer is None:
-                from Ga.GA import GeneticAlgorithm
+                from ga import GeneticAlgorithm
                 ga = GeneticAlgorithm(
                     cont_bounds=bounds_list, n_binary=0, predict_fn=_predict_fn,
                     pop_size=24, generations=30, crossover_rate=0.7,
