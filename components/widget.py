@@ -132,7 +132,6 @@ def main_table():
         filter_action='native',
     )
 
-
 def main_chart(title):
     data = combined_df()
 

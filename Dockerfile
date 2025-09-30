@@ -1,7 +1,7 @@
 FROM python:3.8-slim
 WORKDIR /app
 COPY . .
-EXPOSE 3000 
+EXPOSE 8050 
 
-RUN pip install flask
+RUN pip install -r requirements.txt
 CMD ["python3", "main.py"]
