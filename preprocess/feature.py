@@ -10,7 +10,6 @@ from sklearn.compose import ColumnTransformer
 from sklearn.feature_selection import VarianceThreshold, SelectKBest, f_classif
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
-from imblearn.over_sampling import SMOTE
 import joblib
 import os
 import logging
@@ -166,5 +165,69 @@ class FeaturePreprocessor:
         df['is_weekend'] = df['dayofweek'].isin([5, 6]).astype(int)
 
         return df
+    
+    def make_features(self,
+                    df: pd.DataFrame,
+                    feature_cols: List[str],
+                    target_col: str,
+                    horizon_steps: int = 1,
+                    lags_target: List[int] = (1,2,3,6,12,42),
+                    lags_exo: List[int] = (1,6),
+                    roll_windows: List[int] = (6,12),     # 6*4h=24h, 12*4h=48h (ถ้าความถี่ 4 ชม.)
+                    add_calendar: bool = True,
+                    maintenance_col: str = "is_maintenance",
+    ) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
+        
+        df = df.copy()
+        if isinstance(df.index, pd.DatetimeIndex):
+            df = df.sort_index()
+
+        cal_cols = []
+        if add_calendar and isinstance(df.index, pd.DatetimeIndex):
+            df["hod_sin"] = np.sin(2*np.pi*df.index.hour/24)
+            df["hod_cos"] = np.cos(2*np.pi*df.index.hour/24)
+            df["dow"] = df.index.dayofweek
+            cal_cols = ["hod_sin","hod_cos","dow"]
+
+        tlag_cols = []
+        for k in lags_target:
+            c = f"{target_col}_lag{k}"
+            df[c] = df[target_col].shift(k)
+            tlag_cols.append(c)
+
+        trol_cols = []
+        if roll_windows:
+            shifted = df[target_col].shift(1) 
+            for w in roll_windows:
+                df[f"{target_col}_roll_mean_w{w}"] = shifted.rolling(w, min_periods=max(3,w//2)).mean()
+                df[f"{target_col}_roll_std_w{w}"]  = shifted.rolling(w, min_periods=max(3,w//2)).std()
+                trol_cols += [f"{target_col}_roll_mean_w{w}", f"{target_col}_roll_std_w{w}"]
+
+        exo_lag_cols = []
+        for k in lags_exo:
+            for f in feature_cols:
+                c = f"{f}_lag{k}"
+                df[c] = df[f].shift(k)
+                exo_lag_cols.append(c)
+
+        if maintenance_col not in df.columns:
+            df[maintenance_col] = 0
+
+        y = df[target_col].shift(-horizon_steps)
+
+        feature_list = list(dict.fromkeys(
+            feature_cols + exo_lag_cols + tlag_cols + trol_cols + cal_cols + [maintenance_col]
+        ))
+        X = df[feature_list].copy()
+
+        mask = X.notna().all(axis=1) & y.notna()
+        return X.loc[mask], y.loc[mask], feature_list
+    
+    
+    def chrono_split(self,X: pd.DataFrame, y: pd.Series, ratios=(0.7,0.15,0.15)):
+        n = len(X); i1 = int(n*ratios[0]); i2 = int(n*(ratios[0]+ratios[1]))
+        return (X.iloc[:i1], y.iloc[:i1],
+                X.iloc[i1:i2], y.iloc[i1:i2],
+                X.iloc[i2:],   y.iloc[i2:])
 
 
