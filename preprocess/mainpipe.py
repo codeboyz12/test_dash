@@ -293,7 +293,7 @@ def _heuristic_narrative(label: str, y_pred: float, low_band: Optional[float],
     final_prompt = f"พิจรณาค่า GA ในแต่ละฟีเจอร์นี้ {ga_prompt}, {caveats} และ SHAP ต่อไปนี้ {shap_prompt} จากข้อมูลช่วยเขียนคำแนะนำสำหรับข้อมูลต่อไปนี้ออกมา"
     caveats_advice = ask_alert(final_prompt)
 
-    return {"summary": summary, "actions": actions, "caveats": [caveats_advice]}
+    return {"summary": summary,  "action": [caveats_advice]}
 
 def ga_shap_narrative(
     X_one: pd.DataFrame,
