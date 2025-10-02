@@ -65,6 +65,7 @@ pysocks=1.7.1
 python=3.8.20
 python-dateutil=2.9.0
 python-tzdata=2025.2
+python-socketio=5.14.0
 pytz=2024.1
 readline=8.3
 requests=2.32.3
@@ -74,6 +75,7 @@ scipy=1.10.1
 setuptools=75.1.0
 six=1.16.0
 sqlite=3.50.2
+shap=0.44.1
 tenacity=9.0.0
 threadpoolctl=3.5.0
 tk=8.6.15=h3a5a201_0
