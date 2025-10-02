@@ -234,7 +234,7 @@ try:
     def _run_ga(predict_fn, bounds):
         ga = GeneticAlgorithm(
             cont_bounds=bounds, n_binary=0, predict_fn=predict_fn,
-            pop_size=24, generations=30, crossover_rate=0.7,
+            pop_size=24, generations=10, crossover_rate=0.7,
             mutation_rate=0.2, elite_frac=0.15, maximize=True
         )
         print("Ga running ...")
@@ -297,11 +297,17 @@ def ga_shap_narrative(
     """คืน dict ที่มี shap_top, ga, genai (narrative)"""
     #SHAP
     shap_vals = _compute_shap(shap_explainer, X_one, feature_names)
-    shap_top = sorted(shap_vals.items(), key=lambda x: abs(x[1]), reverse=True)[:8]
+    shap_neg = {k: v for k, v in shap_vals.items() if v < 0}
+    shap_top_neg = sorted(shap_neg.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
+    # shap_top = sorted(shap_vals.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
 
+    if 'R421_Temp' in X_one.columns:
+        print(True)
+    else:
+        print(False)
     #GA
     if controllable_features is None:
-        controllable_features = [f for f in ["Inprocess_Preferment","Inprocess_Ferment","Inprocess_Total","CFconvert-Total-Today"] if f in X_one.columns]
+        controllable_features = [f for f in ['FIC421', 'FIC422','R411_Temp', 'R412_Temp', 'R421_Temp', 'R422_Temp', 'R423_Temp ', 'R424_Temp', 'R425_Temp', 'R426_Temp', 'R427_Temp '] if f in X_one.columns]
     if controllable_bounds is None:
         base = X_one.iloc[0]
         controllable_bounds = {f: (float(base[f])*0.85, float(base[f])*1.15) for f in controllable_features}
@@ -328,7 +334,7 @@ def ga_shap_narrative(
     #Narrative
     y_pred = float(model.predict(X_one[feature_names])[0])
     label_for_text = "soft_anomaly" if (yield_threshold is not None and y_pred < yield_threshold) else "normal"
-    genai = _heuristic_narrative(label_for_text, y_pred, yield_threshold, shap_top, ga_block["suggestion"])
+    genai = _heuristic_narrative(label_for_text, y_pred, yield_threshold, shap_top_neg, ga_block["suggestion"])
 
-    return {"shap_top": shap_top, "ga": ga_block, "gen_ai": genai}
+    return {"shap_top": shap_top_neg, "ga": ga_block, "gen_ai": genai}
 

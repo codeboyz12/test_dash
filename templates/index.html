@@ -54,9 +54,9 @@
           <table class="meta" style="margin-top:8px">
             <tr><td><b>Label</b></td><td id="mLabel">-</td></tr>
             <tr><td><b>z-score</b></td><td id="mZ">-</td></tr>
-            <tr><td><b>ŷ (pred)</b></td><td id="mYhat">-</td></tr>
             <tr><td><b>Low band</b></td><td id="mLow">-</td></tr>
             <tr><td><b>Reasons</b></td><td id="mReasons">-</td></tr>
+            <tr><td><b>ŷ (pred)</b></td><td id="mYhat">-</td></tr>
           </table>
         </div>
         <div class="panel">
@@ -72,10 +72,10 @@
           <h4>Recommended Actions</h4>
           <ul id="mActions"><li>-</li></ul>
         </div>
-        <div class="panel">
+        <!-- <div class="panel">
           <h4>Caveats</h4>
           <ul id="mCaveats"><li>-</li></ul>
-        </div>
+        </div> -->
       </div>
     </div>
   </div>
@@ -174,9 +174,9 @@
       document.getElementById('mSummary').textContent = card.summary || "";
       document.getElementById('mLabel').textContent   = card.details?.label ?? "-";
       document.getElementById('mZ').textContent       = fmt(card.details?.zscore, 2);
-      document.getElementById('mYhat').textContent    = fmt(card.details?.y_pred, 4);
       document.getElementById('mLow').textContent     = fmt(card.details?.low_band, 4);
       document.getElementById('mReasons').textContent = (card.details?.reasons || []).join(", ") || "-";
+      document.getElementById('mYhat').textContent    = fmt(card.details?.y_pred, 4);
 
       document.getElementById('mGA').innerHTML    = objToList(card.details?.ga?.suggestion || {});
       document.getElementById('mGABest').textContent = card.details?.ga?.best_score!=null
@@ -185,7 +185,7 @@
 
       document.getElementById('mSHAP').innerHTML = shapToTable(card.details?.shap_top || []);
       fillList(document.getElementById('mActions'), card.details?.genai?.actions || []);
-      fillList(document.getElementById('mCaveats'), card.details?.genai?.caveats || []);
+      // fillList(document.getElementById('mCaveats'), card.details?.genai?.caveats || []);
 
       modalWrap.style.display = "flex";
     }

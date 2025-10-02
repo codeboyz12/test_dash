@@ -81,7 +81,7 @@ def _build_alert_card(ts, y_true, y_pred, lo, label, reasons, z, *,
                 X_one=X_one, model=model, feature_names=list(X_one.columns),
                 y_true=y_true, yield_threshold=lo,
                 shap_explainer=explainer, 
-                controllable_features=["Inprocess_Preferment","Inprocess_Ferment","Inprocess_Total","CFconvert-Total-Today"],
+                controllable_features=["R411_Temp", "R412_Temp", "R422_Temp", "R423_Temp ", "R424_Temp", "R425_Temp", "R426_Temp", "R427_Temp ", "FIC421", "FIC422"],
                 controllable_bounds=None,
             )
             details["shap_top"] = [[str(k), float(v)] for (k, v) in res.get("shap_top", [])]
@@ -141,6 +141,8 @@ def load_n_fit_detect(df: pd.DataFrame, features: list,ycol="CF-Total-Today") ->
 def stream_loop():
     model, feat_list, q_abs = load_model_dict_simple()
     df = _load_data_for_stream(model, feat_list)
+    df['is_maintenance'] = (df['CF-Total-Today'] < abs(df['CF-Total-Today'].mean()-df['CF-Total-Today'].std())).astype(int)#<-- แก้ใหม่ตรงนี้ด้วย
+    
     detector = load_n_fit_detect(df, feat_list) #<-- แก้ใหม่ตรงนี้
 
  
@@ -190,7 +192,7 @@ def stream_loop():
             stream_payloads.append({
                 "ts": ts, "y_true": y_true, "y_pred": y_pred,
                 "y_lo": lo, "y_hi": hi, "label": out['label'], "color": out['color'],
-                "alert": out['alert'], "reasons": out['reasons'], "z": ['z'],
+                "alert": out['alert'], "reasons": out['reasons'], "z": out['z'],
             })
 
             if out['alert']:
