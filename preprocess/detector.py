@@ -33,7 +33,9 @@ class AnomalyDetector:
         k_maint: float = 3.0,    # maintenance rule: y <= mu - k_maint*std
         ml_model: Optional[Any] = None,
         random_state: int = 42,
+        alert_include_maintenance: bool = False   # <— ใหม่: จะให้นับ ORANGE เป็น alert มั้ย
     ):
+        self.alert_include_maintenance = alert_include_maintenance
         self.contamination = contamination
         self.maintenance_col = maintenance_col
         self.y_col = y_col
@@ -83,41 +85,34 @@ class AnomalyDetector:
             return np.zeros(len(X), dtype=float)
 
     def transform_batch(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        เพิ่มคอลัมน์:
-          roll_mean, roll_std, zscore,
-          soft_anomaly(bool), ml_anomaly(bool), is_maintenance(bool),
-          anomaly_score(float), label(str), color(str), alert(bool)
-        ใช้ no look-ahead: mean/std คำนวณบน y.shift(1)
-        """
         out = df.copy()
 
-        # rolling stats (no look-ahead)
+        # 1) rolling stats (no look-ahead)
         y = out[self.y_col].astype(float)
-        mu = y.shift(1).rolling(self.window, min_periods=max(8, self.window // 2)).mean()
-        sd = y.shift(1).rolling(self.window, min_periods=max(8, self.window // 2)).std()
+        minp = max(8, self.window // 2)
+        mu = y.shift(1).rolling(self.window, min_periods=minp).mean()
+        sd = y.shift(1).rolling(self.window, min_periods=minp).std()
         z = (y - mu) / (sd.replace(0, np.nan))
         out["roll_mean"] = mu
-        out["roll_std"] = sd
-        out["zscore"] = z.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        out["roll_std"]  = sd
+        out["zscore"]    = z.replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
-        # maintenance (rule + external flag if present)
+        # 2) maintenance (rule + external flag)
         rule_maint = y <= (mu - self.k_maint * sd)
-        has_flag = self.maintenance_col in out.columns
-        if has_flag:
+        if self.maintenance_col in out.columns:
             out[self.maintenance_col] = out[self.maintenance_col].astype(bool) | rule_maint.fillna(False)
         else:
             out[self.maintenance_col] = rule_maint.fillna(False)
 
-        # soft anomaly (GREEN) — only if not maintenance
+        # 3) soft anomaly (GREEN) — ไม่ใช่ maintenance
         out["soft_anomaly"] = ((out["zscore"] <= -self.k_soft) & (~out[self.maintenance_col]))
 
-        #  ML anomaly (RED)
+        # 4) ML anomaly (RED)
         ml_mask = self.predict_safe(out)
         out["ml_anomaly"] = ml_mask
         out["anomaly_score"] = self.get_anomaly_scores_safe(out)
 
-        # label/color/alert (priority: RED > ORANGE > GREEN > BLUE)
+        # 5) label/color (priority: RED > ORANGE > GREEN > BLUE)
         out["label"] = np.select(
             [out["ml_anomaly"], out[self.maintenance_col], out["soft_anomaly"]],
             ["ml_anomaly", "maintenance", "soft_anomaly"],
@@ -129,8 +124,76 @@ class AnomalyDetector:
             "soft_anomaly": "green",
             "normal": "blue",
         })
-        out["alert"] = out["label"].isin(["ml_anomaly", "soft_anomaly"])
+
+        # 6) alert policy (ตามพารามิเตอร์)
+        if self.alert_include_maintenance:
+            out["alert"] = out["label"].isin(["ml_anomaly", "soft_anomaly", "maintenance"])
+        else:
+            out["alert"] = out["label"].isin(["ml_anomaly", "soft_anomaly"])
+
+        # 7) สร้าง episode_id สำหรับแต่ละชนิด (ช่วยให้ “แบ่งเป็นช่วง” เหมือนในรูป)
+        out["episode_id"] = self._build_episode_id(out["label"])
+        out["maint_episode_id"] = self._build_episode_id(out["label"].eq("maintenance"))
+        out["ml_episode_id"]    = self._build_episode_id(out["label"].eq("ml_anomaly"))
+        out["soft_episode_id"]  = self._build_episode_id(out["label"].eq("soft_anomaly"))
+
         return out
+
+    # --- helpers สำหรับ episode ---
+    def _build_episode_id(self, mask_or_series: pd.Series) -> pd.Series:
+        """รับ mask/series แล้วนับ episode เฉพาะช่วงที่เป็น True/label นั้นๆ ต่อเนื่องกัน"""
+        s = mask_or_series.copy()
+        if s.dtype != bool:
+            # ถ้าเป็น label (str) แปลงเป็น mask ของ label ที่สนใจก่อน (ผู้ใช้จะส่งมาเป็น Series str ได้)
+            # ในที่นี้รองรับทั้ง str/bool: ถ้าเป็น str จะถือว่า True เมื่อ "มีค่า" (ไม่ว่าง)
+            s = s.astype(bool)
+
+        # เมื่อ False->True เริ่มตอนใหม่: cumsum ของ transition
+        start = (~s.shift(1, fill_value=False) & s).astype(int)
+        eid = (start.cumsum()) * s.astype(int)
+        # ถ้าอยากให้ episode ไล่จาก 1,2,... และศูนย์เมื่อไม่ใช่ episode
+        return eid.astype(int)
+        # out = df.copy()
+
+        # # rolling stats (no look-ahead)
+        # y = out[self.y_col].astype(float)
+        # mu = y.shift(1).rolling(self.window, min_periods=max(8, self.window // 2)).mean()
+        # sd = y.shift(1).rolling(self.window, min_periods=max(8, self.window // 2)).std()
+        # z = (y - mu) / (sd.replace(0, np.nan))
+        # out["roll_mean"] = mu
+        # out["roll_std"] = sd
+        # out["zscore"] = z.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+        # # maintenance (rule + external flag if present)
+        # rule_maint = y <= (mu - self.k_maint * sd)
+        # has_flag = self.maintenance_col in out.columns
+        # if has_flag:
+        #     out[self.maintenance_col] = out[self.maintenance_col].astype(bool) | rule_maint.fillna(False)
+        # else:
+        #     out[self.maintenance_col] = rule_maint.fillna(False)
+
+        # # soft anomaly (GREEN) — only if not maintenance
+        # out["soft_anomaly"] = ((out["zscore"] <= -self.k_soft) & (~out[self.maintenance_col]))
+
+        # #  ML anomaly (RED)
+        # ml_mask = self.predict_safe(out)
+        # out["ml_anomaly"] = ml_mask
+        # out["anomaly_score"] = self.get_anomaly_scores_safe(out)
+
+        # # label/color/alert (priority: RED > ORANGE > GREEN > BLUE)
+        # out["label"] = np.select(
+        #     [out["ml_anomaly"], out[self.maintenance_col], out["soft_anomaly"]],
+        #     ["ml_anomaly", "maintenance", "soft_anomaly"],
+        #     default="normal",
+        # )
+        # out["color"] = out["label"].map({
+        #     "ml_anomaly": "red",
+        #     "maintenance": "orange",
+        #     "soft_anomaly": "green",
+        #     "normal": "blue",
+        # })
+        # out["alert"] = out["label"].isin(["ml_anomaly", "soft_anomaly"])
+        # return out
 
     # ----------------- Online per-row (สำหรับสตรีม/Flask) -----------------
     def step_online(self, X_row: pd.DataFrame, y_now: Optional[float] = None) -> Dict[str, Any]:
@@ -139,13 +202,14 @@ class AnomalyDetector:
         ใช้ rolling buffer ภายในคลาส (no look-ahead)
         """
         assert isinstance(X_row, pd.DataFrame) and len(X_row) == 1
+
         # ML anomaly
         ml_anom, ml_score = False, None
         if self._fitted:
             ml_anom = bool(self.predict(X_row)[0])
             ml_score = float(self.get_anomaly_scores(X_row)[0])
 
-        # rolling z-score
+        # rolling z
         z = 0.0
         if y_now is not None:
             self._y_buf.append(float(y_now))
@@ -159,7 +223,7 @@ class AnomalyDetector:
             else:
                 self._mu, self._sd = None, None
 
-        # maintenance
+        # maintenance (flag + rule)
         maint_flag = False
         if self.maintenance_col in X_row.columns:
             v = X_row[self.maintenance_col].iloc[0]
@@ -171,34 +235,36 @@ class AnomalyDetector:
                 elif isinstance(v, (float, np.floating)):
                     maint_flag = (not np.isnan(v)) and (int(v) == 1)
             except:
-                    maint_flag = False
-        # rule-based 
+                maint_flag = False
+
         rule_maint = False
         if (y_now is not None) and (self._mu is not None) and (self._sd is not None):
             rule_maint = (y_now <= (self._mu - self.k_maint * self._sd))
         is_maintenance = maint_flag or rule_maint
 
-        # soft anomaly (ไม่ใช่ maintenance)
+        # soft anomaly
         is_soft = (y_now is not None) and (not is_maintenance) and (z <= -self.k_soft)
 
         # priority: RED > ORANGE > GREEN > BLUE
+        reasons = []
         if ml_anom:
             label, color = "ml_anomaly", "red"
-            reasons = ["Hard"]
+            reasons.append("ML anomaly (IsolationForest)")
         elif is_maintenance:
             label, color = "maintenance", "orange"
-            reasons = ["Maintenance (rule)"]
+            r = []
+            if maint_flag: r.append("flag")
+            if rule_maint: r.append("rule")
+            reasons.append("Maintenance: " + "+".join(r))
         elif is_soft:
             label, color = "soft_anomaly", "green"
-            reasons =  ["Soft anomaly (rolling z-score)"]
-        
-
+            reasons.append(f"Soft anomaly (z={z:.2f} <= -{self.k_soft})")
         else:
             label, color = "normal", "blue"
-            reasons = ["(forced) test"]
+            reasons.append("Normal")
 
+        alert = (label in ["ml_anomaly", "soft_anomaly"]) or (self.alert_include_maintenance and label=="maintenance")
 
-        alert = (color in ["green", "red","orange"])
         return {
             "label": label,
             "color": color,
@@ -210,6 +276,79 @@ class AnomalyDetector:
             "ml_score": ml_score,
             "reasons": reasons
         }
+
+        # assert isinstance(X_row, pd.DataFrame) and len(X_row) == 1
+        # # ML anomaly
+        # ml_anom, ml_score = False, None
+        # if self._fitted:
+        #     ml_anom = bool(self.predict(X_row)[0])
+        #     ml_score = float(self.get_anomaly_scores(X_row)[0])
+
+        # # rolling z-score
+        # z = 0.0
+        # if y_now is not None:
+        #     self._y_buf.append(float(y_now))
+        #     if len(self._y_buf) >= max(8, self.window // 2):
+        #         arr = np.array(list(self._y_buf)[:-1], dtype=float)  # shift(1)
+        #         if len(arr) > 0:
+        #             mu = arr.mean()
+        #             sd = arr.std() + 1e-9
+        #             z = float((y_now - mu) / sd)
+        #             self._mu, self._sd = mu, sd
+        #     else:
+        #         self._mu, self._sd = None, None
+
+        # # maintenance
+        # maint_flag = False
+        # if self.maintenance_col in X_row.columns:
+        #     v = X_row[self.maintenance_col].iloc[0]
+        #     try:
+        #         if isinstance(v, (bool, np.bool_)):
+        #             maint_flag = bool(v)
+        #         elif isinstance(v, (int, np.integer)):
+        #             maint_flag = (v == 1)
+        #         elif isinstance(v, (float, np.floating)):
+        #             maint_flag = (not np.isnan(v)) and (int(v) == 1)
+        #     except:
+        #             maint_flag = False
+        # # rule-based 
+        # rule_maint = False
+        # if (y_now is not None) and (self._mu is not None) and (self._sd is not None):
+        #     rule_maint = (y_now <= (self._mu - self.k_maint * self._sd))
+        # is_maintenance = maint_flag or rule_maint
+
+        # # soft anomaly (ไม่ใช่ maintenance)
+        # is_soft = (y_now is not None) and (not is_maintenance) and (z <= -self.k_soft)
+
+        # # priority: RED > ORANGE > GREEN > BLUE
+        # if ml_anom:
+        #     label, color = "ml_anomaly", "red"
+        #     reasons = ["Hard"]
+        # elif is_maintenance:
+        #     label, color = "maintenance", "orange"
+        #     reasons = ["Maintenance (rule)"]
+        # elif is_soft:
+        #     label, color = "soft_anomaly", "green"
+        #     reasons =  ["Soft anomaly (rolling z-score)"]
+        
+
+        # else:
+        #     label, color = "normal", "blue"
+        #     reasons = ["(forced) test"]
+
+
+        # alert = (color in ["green", "red","orange"])
+        # return {
+        #     "label": label,
+        #     "color": color,
+        #     "alert": alert,
+        #     "y": y_now,
+        #     "mu": self._mu,
+        #     "sd": self._sd,
+        #     "z": z,
+        #     "ml_score": ml_score,
+        #     "reasons": reasons
+        # }
 
     # ----------------- helpers -----------------
     def predict_safe(self, df: pd.DataFrame) -> np.ndarray:

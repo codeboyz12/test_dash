@@ -1,36 +1,113 @@
 <!doctype html>
 <html>
+
 <head>
-  <meta charset="utf-8"/>
+  <meta charset="utf-8" />
   <title>Realtime CF Yield</title>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5"></script>
   <style>
-    body{background:#0e1726;color:#e6e6e6;font-family:system-ui,Segoe UI,Roboto}
-    #chart{width:100%;height:520px;margin:18px auto;max-width:1200px}
-    .card{max-width:1200px;margin:0 auto 12px;padding:10px 14px;background:#13203f;border-radius:10px}
-    /* Modal */
-    .modal-overlay{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:9999;}
-    .modal{width:min(920px,95vw); background:#121826; border:1px solid #23324d; border-radius:12px; box-shadow:0 14px 40px rgba(0,0,0,.45); overflow:hidden}
-    .modal header{display:flex; gap:10px; justify-content:space-between; align-items:center; padding:12px 16px; background:#0f172a}
-    .modal header h3{margin:0; font-weight:600}
-    .modal .close{cursor:pointer; font-size:18px; padding:2px 8px; color:#cbd5e1}
-    .modal .content{padding:14px 16px; display:grid; grid-template-columns: 1fr 1fr; gap:14px}
-    .badge{display:inline-block; padding:2px 8px; border-radius:12px; font-size:.8rem}
-    .badge.info{background:#123a49; color:#9be6ff}
-    .badge.danger{background:#4a1f1f; color:#ffb0b0}
-    .panel{background:#0f1b2f; border:1px solid #23324d; border-radius:10px; padding:10px}
-    .panel h4{margin:0 0 8px 0}
-    table.meta{width:100%; border-collapse:collapse}
-    table.meta td{padding:4px 6px; border-bottom:1px dashed #23324d; font-size:.95rem}
-    ul {margin:6px 0 0 20px}
-    .muted{opacity:.9; font-size:.9rem}
+    /* Modern Dark Dashboard — clean & premium */
+:root{
+  --bg:#0b1220;
+  --text:#e7ebf3;
+  --muted:#a9b4c7;
+  --card:#101a2f;
+  --card-br:#213050;
+  --header:#0d1629;
+  --accent:#7ab7ff;
+  --accent-2:#8be1ff;
+  --shadow:0 14px 50px rgba(2,8,23,.45);
+
+  /* chart palette */
+  --c-actual:#87b5ff;
+  --c-pred:#7ee0c9;
+  --c-ci:#82a6ff;
+  --c-red:#ff8a8a;
+  --c-orange:#ffcf73;
+  --c-green:#6fe28a;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(122,183,255,.07), transparent 60%),
+    radial-gradient(900px 500px at 90% -20%, rgba(139,225,255,.06), transparent 60%),
+    var(--bg);
+  color:var(--text);
+  font-family:ui-sans-serif, system-ui, Segoe UI, Roboto, Inter, Arial;
+}
+
+#chart{width:100%;height:520px;margin:18px auto;max-width:1200px}
+.card{
+  max-width:1200px;margin:0 auto 12px;padding:14px 18px;
+  background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.00));
+  border:1px solid var(--card-br); border-radius:14px; backdrop-filter: blur(6px);
+  box-shadow:0 6px 20px rgba(0,0,0,.25)
+}
+.card h2{margin:0; font-weight:650; letter-spacing:.2px}
+#btnTest{
+  margin-left:auto;padding:8px 12px;border-radius:10px;
+  border:1px solid var(--card-br); background:#15254a; color:var(--text); cursor:pointer;
+  transition:all .18s ease;
+}
+#btnTest:hover{transform:translateY(-1px); box-shadow:0 8px 20px rgba(0,0,0,.25)}
+#btnTest:active{transform:translateY(0) scale(.99)}
+
+/* Modal */
+.modal-overlay{
+  position:fixed; inset:0; background:rgba(2,8,23,.55);
+  display:none; align-items:center; justify-content:center; z-index:9999;
+  padding:24px; overflow:auto;
+}
+.modal{
+  width:min(960px,95vw); max-height:90vh; overflow-y:auto; margin:auto;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.00)),
+    #0f182b;
+  border:1px solid var(--card-br); border-radius:16px; box-shadow:var(--shadow);
+}
+.modal header{
+  display:flex; gap:10px; justify-content:space-between; align-items:center;
+  padding:14px 18px; background:var(--header);
+  border-bottom:1px solid var(--card-br)
+}
+.modal header h3{margin:0; font-weight:650}
+.modal .close{cursor:pointer; font-size:18px; padding:4px 10px; color:#cfd7e6; border-radius:8px}
+.modal .close:hover{background:rgba(255,255,255,.06)}
+.modal .content{
+  padding:16px 18px; display:grid; grid-template-columns: 1fr 1fr; gap:16px
+}
+
+.badge{display:inline-block; padding:4px 10px; border-radius:999px; font-size:.8rem}
+.badge.info{background:rgba(122,183,255,.15); color:var(--accent)}
+.badge.danger{background:rgba(255,138,138,.14); color:var(--c-red)}
+
+.panel{
+  background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.00));
+  border:1px solid var(--card-br); border-radius:12px; padding:12px
+}
+.panel h4{margin:0 0 8px 0; font-weight:600; color:#f2f5fb}
+table.meta{width:100%; border-collapse:collapse}
+table.meta td{
+  padding:6px 6px; border-bottom:1px dashed var(--card-br);
+  font-size:.95rem; color:var(--muted)
+}
+ul{margin:6px 0 0 18px}
+.muted{opacity:.95; font-size:.9rem; color:var(--muted)}
+
+/* ECharts axis look cleaner */
+.echarts{border-radius:12px}
+
   </style>
 </head>
+
 <body>
   <div class="card" style="display:flex;align-items:center;gap:10px">
     <h2 style="margin:0">CF Total (Realtime)</h2>
-    <button id="btnTest" style="margin-left:auto;padding:6px 10px;border-radius:8px;border:1px solid #23324d;background:#1f2a44;color:#e6e6e6;cursor:pointer">
+    <button id="btnTest"
+      style="margin-left:auto;padding:6px 10px;border-radius:8px;border:1px solid #23324d;background:#1f2a44;color:#e6e6e6;cursor:pointer">
       Test Alert
     </button>
   </div>
@@ -52,11 +129,26 @@
           <div class="muted" id="mTime"></div>
           <div id="mSummary" style="margin-top:6px"></div>
           <table class="meta" style="margin-top:8px">
-            <tr><td><b>Label</b></td><td id="mLabel">-</td></tr>
-            <tr><td><b>z-score</b></td><td id="mZ">-</td></tr>
-            <tr><td><b>Low band</b></td><td id="mLow">-</td></tr>
-            <tr><td><b>Reasons</b></td><td id="mReasons">-</td></tr>
-            <tr><td><b>ŷ (pred)</b></td><td id="mYhat">-</td></tr>
+            <tr>
+              <td><b>Label</b></td>
+              <td id="mLabel">-</td>
+            </tr>
+            <tr>
+              <td><b>z-score</b></td>
+              <td id="mZ">-</td>
+            </tr>
+            <tr>
+              <td><b>Low band</b></td>
+              <td id="mLow">-</td>
+            </tr>
+            <tr>
+              <td><b>Reasons</b></td>
+              <td id="mReasons">-</td>
+            </tr>
+            <tr>
+              <td><b>ŷ (pred)</b></td>
+              <td id="mYhat">-</td>
+            </tr>
           </table>
         </div>
         <div class="panel">
@@ -68,13 +160,15 @@
           <h4>Top SHAP Features</h4>
           <div id="mSHAP">-</div>
         </div>
-        <div class="panel">
+        <div class="panel" style="grid-column:1/-1">
           <h4>Recommended Actions</h4>
-          <ul id="mActions"><li>-</li></ul>
+          <ul id="mActions">
+            <li>-</li>
+          </ul>
         </div>
         <!-- <div class="panel">
           <h4>Caveats</h4>
-          <p id="mCaveats"></p>
+          <ul id="mCaveats"><li>-</li></ul>
         </div> -->
       </div>
     </div>
@@ -85,38 +179,81 @@
 
     // Chart
     const chart = echarts.init(document.getElementById('chart'));
-    const x=[], yTrue=[], yPred=[], lo=[], hi=[], red=[], orange=[], green=[];
+    const x = [], yTrue = [], yPred = [], lo = [], hi = [], red = [], orange = [], green = [];
     chart.setOption({
-      backgroundColor:'transparent',
-      tooltip:{trigger:'axis'},
-      legend:{data:['Actual','Predicted','Anomaly (ML)','Maintenance (Rule)','Soft (Z)'], textStyle:{color:'#d9d9d9'}},
-      xAxis:{type:'category',boundaryGap:false,data:x,axisLabel:{color:'#9fb3c8'}},
-      yAxis:{type:'value',axisLabel:{color:'#9fb3c8'}},
-      series:[
-        {name:'Actual',type:'line',data:yTrue,showSymbol:false,lineStyle:{width:2}},
-        {name:'Predicted',type:'line',data:yPred,showSymbol:false,lineStyle:{width:1.5,opacity:0.6}},
-        {name:'CI Low',type:'line',data:lo,showSymbol:false,lineStyle:{opacity:0},areaStyle:{opacity:0.12}},
-        {name:'CI High',type:'line',data:hi,showSymbol:false,lineStyle:{opacity:0}},
-        {name:'Anomaly (ML)',type:'scatter',data:red,symbolSize:8,itemStyle:{color:'red'}},
-        {name:'Maintenance (Rule)',type:'scatter',data:orange,symbolSize:8,itemStyle:{color:'orange'}},
-        {name:'Soft (Z)',type:'scatter',data:green,symbolSize:8,itemStyle:{color:'green'}},
-      ]
-    });
+  backgroundColor:'transparent',
+  grid:{left:48,right:24,top:32,bottom:40},
+  tooltip:{trigger:'axis', backgroundColor:'rgba(15,24,43,.92)', borderColor:'#223050', textStyle:{color:'#e8edf7'}},
+  legend:{
+    data:['Actual','Predicted','Anomaly (ML)','Maintenance (Rule)','Soft (Z)'],
+    textStyle:{color:'#cfd6e6'}
+  },
+  xAxis:{
+    type:'category', boundaryGap:false, data:x,
+    axisLine:{lineStyle:{color:'#2a3a5a'}},
+    axisLabel:{color:'#aebad3'}
+  },
+  yAxis:{
+    type:'value',
+    axisLine:{lineStyle:{color:'#2a3a5a'}},
+    splitLine:{lineStyle:{color:'rgba(255,255,255,.06)'}},
+    axisLabel:{color:'#aebad3'}
+  },
+  dataZoom:[
+    {type:'inside', start:70, end:100},
+    {type:'slider', height:16, bottom:10, handleSize:0, borderColor:'#1d2a46', backgroundColor:'rgba(255,255,255,.03)'}
+  ],
+  series:[
+    {
+    name:'Actual',
+    type:'line',
+    smooth:true,
+    showSymbol:false,
+    data:yTrue,
+    lineStyle:{width:2, color:'#1e90ff'} // น้ำเงินสด (DodgerBlue)
+  },
+  {
+    name:'Predicted',
+    type:'line',
+    smooth:true,
+    showSymbol:false,
+    data:yPred,
+    lineStyle:{width:2, color:'#32cd32', opacity:0.9} // เขียวสด (LimeGreen)
+  },
+    {name:'CI Low',type:'line',data:lo,showSymbol:false,
+     lineStyle:{opacity:0},areaStyle:{opacity:.10,color:getCss('--c-ci')}},
+    {name:'CI High',type:'line',data:hi,showSymbol:false,lineStyle:{opacity:0}},
+    {name:'Anomaly (ML)',type:'scatter',data:red,symbolSize:8,
+     itemStyle:{color:getCss('--c-red')}},
+    {name:'Maintenance (Rule)',type:'scatter',data:orange,symbolSize:8,
+     itemStyle:{color:getCss('--c-orange')}},
+    {name:'Soft (Z)',type:'scatter',data:green,symbolSize:8,
+     itemStyle:{color:getCss('--c-green')}}
+  ]
+});
 
-    function pushPoint(p){
+// helper อ่านตัวแปรสีจาก :root (ใส่ไว้ในไฟล์เดิมได้เลย)
+function getCss(name){
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || name;
+}
+
+
+    function pushPoint(p) {
       const ts = p.ts;
       x.push(ts); yTrue.push(p.y_true); yPred.push(p.y_pred);
       lo.push(p.y_lo ?? null); hi.push(p.y_hi ?? null);
-      if(p.alert){
-        if(p.color==='red')    red.push([ts,p.y_true]);
-        if(p.color==='orange') orange.push([ts,p.y_true]);
-        if(p.color==='green')  green.push([ts,p.y_true]);
+      if (p.alert) {
+        if (p.color === 'red') red.push([ts, p.y_true]);
+        if (p.color === 'orange') orange.push([ts, p.y_true]);
+        if (p.color === 'green') green.push([ts, p.y_true]);
       }
     }
-    function flush(){
-      chart.setOption({xAxis:{data:x},series:[
-        {data:yTrue},{data:yPred},{data:lo},{data:hi},{data:red},{data:orange},{data:green}
-      ]}, false, true);
+    function flush() {
+      chart.setOption({
+        xAxis: { data: x }, series: [
+          { data: yTrue }, { data: yPred }, { data: lo }, { data: hi }, { data: red }, { data: orange }, { data: green }
+        ]
+      }, false, true);
     }
 
     // Pause/Resume & Queues
@@ -124,9 +261,9 @@
     const backlog = [];    // เก็บข้อมูลสตรีมตอน pause
     const alertQueue = []; // เก็บการ์ด alert ที่รอแสดง
 
-    function applyBacklog(){
+    function applyBacklog() {
       if (!backlog.length) return;
-      for (const batch of backlog){
+      for (const batch of backlog) {
         if (Array.isArray(batch)) { for (const p of batch) pushPoint(p); }
         else { pushPoint(batch); }
       }
@@ -136,51 +273,51 @@
 
     // Modal helpers
     const modalWrap = document.getElementById('modalWrap');
-    const mClose   = document.getElementById('mClose');
+    const mClose = document.getElementById('mClose');
 
-    function fillList(node, arr){
+    function fillList(node, arr) {
       node.innerHTML = "";
-      if (!arr || !arr.length){ node.innerHTML = "<li>-</li>"; return; }
-      for (const s of arr){
+      if (!arr || !arr.length) { node.innerHTML = "<li>-</li>"; return; }
+      for (const s of arr) {
         const li = document.createElement("li");
         li.textContent = typeof s === "string" ? s : JSON.stringify(s);
         node.appendChild(li);
       }
     }
-    function objToList(obj){
+    function objToList(obj) {
       if (!obj || !Object.keys(obj).length) return "-";
       return "<ul style='margin:6px 0 0 18px'>" +
-             Object.entries(obj).map(([k,v]) => `<li><b>${k}</b>: ${Number.isFinite(v)? (typeof v==='number'? v.toFixed(4):v) : v}</li>`).join("") +
-             "</ul>";
+        Object.entries(obj).map(([k, v]) => `<li><b>${k}</b>: ${Number.isFinite(v) ? (typeof v === 'number' ? v.toFixed(4) : v) : v}</li>`).join("") +
+        "</ul>";
     }
-    function shapToTable(pairs){
+    function shapToTable(pairs) {
       if (!pairs || !pairs.length) return "-";
       return "<table class='meta'>" +
-        pairs.map(([f,v]) => `<tr><td>${f}</td><td style="text-align:right">${(Number(v)||0).toFixed(4)}</td></tr>`).join("") +
-      "</table>";
+        pairs.map(([f, v]) => `<tr><td>${f}</td><td style="text-align:right">${(Number(v) || 0).toFixed(4)}</td></tr>`).join("") +
+        "</table>";
     }
 
-    function showModal(card){
-      if (paused){ alertQueue.push(card); return; }
+    function showModal(card) {
+      if (paused) { alertQueue.push(card); return; }
       paused = true;
-      const fmt = (x, fix=4) => (x==null || Number.isNaN(x)) ? "-" : (typeof x==="number" ? x.toFixed(fix) : x);
+      const fmt = (x, fix = 4) => (x == null || Number.isNaN(x)) ? "-" : (typeof x === "number" ? x.toFixed(fix) : x);
 
       document.getElementById('mTitle').textContent = card.title || "Alert";
       const badge = document.getElementById('mBadge');
       badge.className = `badge ${card.variant || 'danger'}`;
       badge.textContent = (card.details?.label || "").toUpperCase() || "ALERT";
 
-      document.getElementById('mTime').textContent    = card.ts ? new Date(card.ts).toLocaleString() : "";
+      document.getElementById('mTime').textContent = card.ts ? new Date(card.ts).toLocaleString() : "";
       document.getElementById('mSummary').textContent = card.summary || "";
-      document.getElementById('mLabel').textContent   = card.details?.label ?? "-";
-      document.getElementById('mZ').textContent       = fmt(card.details?.zscore, 2);
-      document.getElementById('mLow').textContent     = fmt(card.details?.low_band, 4);
+      document.getElementById('mLabel').textContent = card.details?.label ?? "-";
+      document.getElementById('mZ').textContent = fmt(card.details?.zscore, 2);
+      document.getElementById('mLow').textContent = fmt(card.details?.low_band, 4);
       document.getElementById('mReasons').textContent = (card.details?.reasons || []).join(", ") || "-";
-      document.getElementById('mYhat').textContent    = fmt(card.details?.y_pred, 4);
+      document.getElementById('mYhat').textContent = fmt(card.details?.y_pred, 4);
 
-      document.getElementById('mGA').innerHTML    = objToList(card.details?.ga?.suggestion || {});
-      document.getElementById('mGABest').textContent = card.details?.ga?.best_score!=null
-        ? `Best predicted yield: ${fmt(card.details.ga.best_score,4)}`
+      document.getElementById('mGA').innerHTML = objToList(card.details?.ga?.suggestion || {});
+      document.getElementById('mGABest').textContent = card.details?.ga?.best_score != null
+        ? `Best predicted yield: ${fmt(card.details.ga.best_score, 4)}`
         : "";
 
       document.getElementById('mSHAP').innerHTML = shapToTable(card.details?.shap_top || []);
@@ -189,11 +326,11 @@
 
       modalWrap.style.display = "flex";
     }
-    function closeModal(){
+    function closeModal() {
       modalWrap.style.display = "none";
       paused = false;
       applyBacklog();
-      if (alertQueue.length){
+      if (alertQueue.length) {
         const next = alertQueue.shift();
         showModal(next);
       }
@@ -201,7 +338,7 @@
     mClose.addEventListener('click', closeModal);
 
     // Test Alert
-    document.getElementById('btnTest')?.addEventListener('click', ()=>{
+    document.getElementById('btnTest')?.addEventListener('click', () => {
       const sample = {
         ts: new Date().toISOString(),
         variant: "danger",
@@ -210,24 +347,24 @@
         details: {
           label: "soft_anomaly", reasons: ["Soft anomaly (rolling z-score)"],
           zscore: -2.35, y_true: 0.0912, y_pred: 0.0831, low_band: 0.0840,
-          shap_top: [["Inprocess_Ferment",-0.0121],["Inprocess_Preferment",-0.0041]],
-          ga: { suggestion: {"Inprocess_Ferment":0.78,"Inprocess_Preferment":0.66}, best_score: 0.1023 },
-          genai: { summary: "ค่า yield คาดว่าจะต่ำ", actions: ["ปรับ ferment +2%","ลด preferment 1%"], caveats: ["ตรวจ constraint"] }
+          shap_top: [["Inprocess_Ferment", -0.0121], ["Inprocess_Preferment", -0.0041]],
+          ga: { suggestion: { "Inprocess_Ferment": 0.78, "Inprocess_Preferment": 0.66 }, best_score: 0.1023 },
+          genai: { summary: "ค่า yield คาดว่าจะต่ำ", actions: ["ปรับ ferment +2%", "ลด preferment 1%"], caveats: ["ตรวจ constraint"] }
         }
       };
       showModal(sample);
     });
 
     // Socket
-    const socket = io({transports:['websocket']});
+    const socket = io({ transports: ['websocket'] });
     socket.on('connect', () => console.log('[socket] connected'));
     socket.on('disconnect', () => console.log('[socket] disconnected'));
 
     socket.on('updateSensorData', (payload) => {
       const n = Array.isArray(payload) ? payload.length : 1;
-      if (paused){ backlog.push(payload); }
+      if (paused) { backlog.push(payload); }
       else {
-        if (Array.isArray(payload)){ for (const p of payload) pushPoint(p); }
+        if (Array.isArray(payload)) { for (const p of payload) pushPoint(p); }
         else { pushPoint(payload); }
         flush();
       }
@@ -237,13 +374,14 @@
       console.log('[socket] alertEvent:', cards);
       const arr = Array.isArray(cards) ? cards : [cards];
       if (!arr.length) return;
-      if (!paused){
+      if (!paused) {
         showModal(arr[0]);
-        for (let i=1;i<arr.length;i++) alertQueue.push(arr[i]);
+        for (let i = 1; i < arr.length; i++) alertQueue.push(arr[i]);
       } else {
         for (const c of arr) alertQueue.push(c);
       }
     });
   </script>
 </body>
+
 </html>

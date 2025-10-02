@@ -268,26 +268,26 @@ def _heuristic_narrative(label: str, y_pred: float, low_band: Optional[float],
         "normal": "คาดการณ์อยู่ในช่วงปกติ",
     }.get(label, "พบสัญญาณที่ต้องติดตาม")
 
-    actions = []
-    if ga_sug:
-        for k, v in list(ga_sug.items())[:3]:
-            actions.append(f"ปรับ {k} → {v:.3f} ตามข้อเสนอ GA")
-    if not actions:
-        actions = ["ทวนสอบสัญญาณหน้างาน", "ตรวจสอบข้อจำกัดการเดินเครื่อง", "ยืนยันข้อมูลขาเข้า"]
+    # actions = []
+    # if ga_sug:
+    #     for k, v in list(ga_sug.items())[:3]:
+    #         actions.append(f"ปรับ {k} → {v:.3f} ตามข้อเสนอ GA")
+    # if not actions:
+    #     actions = ["ทวนสอบสัญญาณหน้างาน", "ตรวจสอบข้อจำกัดการเดินเครื่อง", "ยืนยันข้อมูลขาเข้า"]
 
-    caveats = ""
+    actions = ""
     if low_band is not None and y_pred is not None:
-        caveats += f"ตรวจสอบว่า ŷ={y_pred:.4f} ไม่ต่ำกว่า band ล่าง ({low_band:.4f}) ต่อเนื่องหลายช่วง"
+        actions += f"ตรวจสอบว่า ŷ={y_pred:.4f} ไม่ต่ำกว่า band ล่าง ({low_band:.4f}) ต่อเนื่องหลายช่วง"
     if shap_top:
-        caveats += "พิจารณาฟีเจอร์ที่มีผลมาก (SHAP) ก่อนปรับจริง"
-    caveats += "ยืนยัน constraint/ความปลอดภัยกระบวนการก่อนปรับทุกครั้ง"
+        actions += "พิจารณาฟีเจอร์ที่มีผลมาก (SHAP) ก่อนปรับจริง"
+    actions += "ยืนยัน constraint/ความปลอดภัยกระบวนการก่อนปรับทุกครั้ง"
     
-    caveats += "จากข้อมูลช่วยเขียนคำแนะนำสำหรับข้อมูลต่อไปนี้ออกมา"
+    actions += "จากข้อมูลช่วยเขียนคำแนะนำสำหรับข้อมูลต่อไปนี้ออกมา"
 
-    caveats_advice = ask_alert(caveats)
+    caveats_advice = ask_alert(actions)
     print(f"[mainpipe][opt]: {caveats_advice}")
-
-    return {"summary": summary, "actions": actions, "caveats": [caveats_advice]}
+    
+    return {"summary": summary, "actions": [caveats_advice]}
 
 def ga_shap_narrative(
     X_one: pd.DataFrame,
@@ -300,47 +300,151 @@ def ga_shap_narrative(
     controllable_features: Optional[List[str]] = None,
     controllable_bounds: Optional[Dict[str, tuple]] = None,
 ) -> Dict[str, Any]:
-    """คืน dict ที่มี shap_top, ga, genai (narrative)"""
-    #SHAP
-    shap_vals = _compute_shap(shap_explainer, X_one, feature_names)
+    """คืน dict ที่มี shap_top, ga, genai (narrative) — รองรับ GA แบบ batch + fallback ของเดิมอัตโนมัติ"""
+
+    shap_vals = _compute_shap(shap_explainer, X_one, feature_names) 
     shap_neg = {k: v for k, v in shap_vals.items() if v < 0}
     shap_top_neg = sorted(shap_neg.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
-    # shap_top = sorted(shap_vals.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
 
     if 'R421_Temp' in X_one.columns:
         print(True)
     else:
         print(False)
-    #GA
+
     if controllable_features is None:
-        controllable_features = [f for f in ['FIC421', 'FIC422','R411_Temp', 'R412_Temp', 'R421_Temp', 'R422_Temp', 'R423_Temp ', 'R424_Temp', 'R425_Temp', 'R426_Temp', 'R427_Temp '] if f in X_one.columns]
+        candidates = ['FIC421', 'FIC422', 'R411_Temp', 'R412_Temp', 'R421_Temp',
+                      'R422_Temp', 'R423_Temp ', 'R424_Temp', 'R425_Temp', 'R426_Temp', 'R427_Temp ']
+
+        controllable_features = []
+        for f in candidates:
+            f2 = f.strip()
+            if f2 in X_one.columns and f2 not in controllable_features:
+                controllable_features.append(f2)
+
     if controllable_bounds is None:
         base = X_one.iloc[0]
-        controllable_bounds = {f: (float(base[f])*0.85, float(base[f])*1.15) for f in controllable_features}
+        controllable_bounds = {
+            f: (float(base[f]) * 0.85, float(base[f]) * 1.15) for f in controllable_features
+        }
+
     bounds_list = [controllable_bounds[f] for f in controllable_features]
 
-    def _predict_fn(ind):
-        row = X_one.copy()
-        i0 = row.index[0]
-        for i, f in enumerate(controllable_features):
-            row.at[i0, f] = float(ind[i])
-        return float(model.predict(row[feature_names])[0])
-
+    base_vec = X_one[feature_names].iloc[0].to_numpy(dtype=float)  
     try:
-        ga_res = _run_ga(_predict_fn, bounds_list)
+        ctrl_idx = np.array([feature_names.index(f) for f in controllable_features], dtype=int)
+    except ValueError as e:
+        valid_feats = [f for f in controllable_features if f in feature_names]
+        ctrl_idx = np.array([feature_names.index(f) for f in valid_feats], dtype=int)
+        controllable_features = valid_feats
+        bounds_list = [controllable_bounds[f] for f in controllable_features]
+
+    def batch_predict_fn(X_batch: np.ndarray) -> np.ndarray:
+        """
+        X_batch: (M, len(controllable_features)) เฉพาะค่าที่ควบคุมได้ ตามลำดับ controllable_features
+        return:  (M,)
+        """
+        if X_batch.ndim == 1:
+            X_batch = X_batch.reshape(1, -1)
+        M = X_batch.shape[0]
+        X_full = np.repeat(base_vec[None, :], M, axis=0)
+        X_full[:, ctrl_idx] = X_batch.astype(float, copy=False)
+        preds = model.predict(X_full)
+        return np.asarray(preds, dtype=float).reshape(-1)
+
+ 
+    def _predict_fn(ind: np.ndarray) -> float:
+        vec = base_vec.copy()
+        # เขียนเฉพาะฟีเจอร์ที่ควบคุม (ตามลำดับ controllable_features)
+        n_ctrl = len(controllable_features)
+        vec[ctrl_idx] = np.asarray(ind[:n_ctrl], dtype=float)
+        return float(model.predict(vec.reshape(1, -1))[0])
+
+   
+    ga_res = None
+    try:
+        ga_res = _run_ga(
+            _predict_fn,                
+            bounds_list,
+            batch_predict_fn=batch_predict_fn,
+            use_batch=True
+        )
+    except TypeError:
+        try:
+            ga_res = _run_ga(_predict_fn, bounds_list)
+        except Exception:
+            ga_res = None
     except Exception:
         ga_res = None
 
     ga_block = {"suggestion": {}, "best_score": None}
     if isinstance(ga_res, dict) and "best_individual" in ga_res:
         best = ga_res["best_individual"]
+        n_ctrl = len(controllable_features)
+        best = np.asarray(best, dtype=float).ravel()[:n_ctrl]
         sug = {f: float(best[i]) for i, f in enumerate(controllable_features)}
         ga_block = {"suggestion": sug, "best_score": float(ga_res.get("best_score", np.nan))}
 
-    #Narrative
     y_pred = float(model.predict(X_one[feature_names])[0])
     label_for_text = "soft_anomaly" if (yield_threshold is not None and y_pred < yield_threshold) else "normal"
     genai = _heuristic_narrative(label_for_text, y_pred, yield_threshold, shap_top_neg, ga_block["suggestion"])
 
     return {"shap_top": shap_top_neg, "ga": ga_block, "gen_ai": genai}
+
+
+
+
+# def ga_shap_narrative(
+#     X_one: pd.DataFrame,
+#     model,
+#     feature_names: List[str],
+#     *,
+#     y_true: Optional[float] = None,
+#     yield_threshold: Optional[float] = None,
+#     shap_explainer=None,
+#     controllable_features: Optional[List[str]] = None,
+#     controllable_bounds: Optional[Dict[str, tuple]] = None,
+# ) -> Dict[str, Any]:
+#     """คืน dict ที่มี shap_top, ga, genai (narrative)"""
+#     #SHAP
+#     shap_vals = _compute_shap(shap_explainer, X_one, feature_names)
+#     shap_neg = {k: v for k, v in shap_vals.items() if v < 0}
+#     shap_top_neg = sorted(shap_neg.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
+#     # shap_top = sorted(shap_vals.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
+
+#     if 'R421_Temp' in X_one.columns:
+#         print(True)
+#     else:
+#         print(False)
+#     #GA
+#     if controllable_features is None:
+#         controllable_features = [f for f in ['FIC421', 'FIC422','R411_Temp', 'R412_Temp', 'R421_Temp', 'R422_Temp', 'R423_Temp ', 'R424_Temp', 'R425_Temp', 'R426_Temp', 'R427_Temp '] if f in X_one.columns]
+#     if controllable_bounds is None:
+#         base = X_one.iloc[0]
+#         controllable_bounds = {f: (float(base[f])*0.85, float(base[f])*1.15) for f in controllable_features}
+#     bounds_list = [controllable_bounds[f] for f in controllable_features]
+
+#     def _predict_fn(ind):
+#         row = X_one.copy()
+#         i0 = row.index[0]
+#         for i, f in enumerate(controllable_features):
+#             row.at[i0, f] = float(ind[i])
+#         return float(model.predict(row[feature_names])[0])
+
+#     try:
+#         ga_res = _run_ga(_predict_fn, bounds_list)
+#     except Exception:
+#         ga_res = None
+
+#     ga_block = {"suggestion": {}, "best_score": None}
+#     if isinstance(ga_res, dict) and "best_individual" in ga_res:
+#         best = ga_res["best_individual"]
+#         sug = {f: float(best[i]) for i, f in enumerate(controllable_features)}
+#         ga_block = {"suggestion": sug, "best_score": float(ga_res.get("best_score", np.nan))}
+
+#     #Narrative
+#     y_pred = float(model.predict(X_one[feature_names])[0])
+#     label_for_text = "soft_anomaly" if (yield_threshold is not None and y_pred < yield_threshold) else "normal"
+#     genai = _heuristic_narrative(label_for_text, y_pred, yield_threshold, shap_top_neg, ga_block["suggestion"])
+
+#     return {"shap_top": shap_top_neg, "ga": ga_block, "gen_ai": genai}
 
