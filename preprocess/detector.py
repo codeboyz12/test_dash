@@ -162,8 +162,17 @@ class AnomalyDetector:
         # maintenance
         maint_flag = False
         if self.maintenance_col in X_row.columns:
-            maint_flag = bool(int(X_row[self.maintenance_col].iloc[0]) == 1)
-        # rule-based (เฉพาะตอนรู้ y_now และมีสถิติ)
+            v = X_row[self.maintenance_col].iloc[0]
+            try:
+                if isinstance(v, (bool, np.bool_)):
+                    maint_flag = bool(v)
+                elif isinstance(v, (int, np.integer)):
+                    maint_flag = (v == 1)
+                elif isinstance(v, (float, np.floating)):
+                    maint_flag = (not np.isnan(v)) and (int(v) == 1)
+            except:
+                    maint_flag = False
+        # rule-based 
         rule_maint = False
         if (y_now is not None) and (self._mu is not None) and (self._sd is not None):
             rule_maint = (y_now <= (self._mu - self.k_maint * self._sd))
@@ -175,20 +184,21 @@ class AnomalyDetector:
         # priority: RED > ORANGE > GREEN > BLUE
         if ml_anom:
             label, color = "ml_anomaly", "red"
-            reasons = ["Hard anomaly"]
+            reasons = ["Hard"]
         elif is_maintenance:
             label, color = "maintenance", "orange"
             reasons = ["Maintenance (rule)"]
         elif is_soft:
             label, color = "soft_anomaly", "green"
             reasons =  ["Soft anomaly (rolling z-score)"]
+        
 
         else:
             label, color = "normal", "blue"
             reasons = ["(forced) test"]
 
 
-        alert = (color in ["green", "red"])
+        alert = (color in ["green", "red","orange"])
         return {
             "label": label,
             "color": color,

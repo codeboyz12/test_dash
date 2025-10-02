@@ -7,7 +7,7 @@ from preprocess.utils import load_model_dict
 
 
 
-def _load_model_dict_simple(filename: str = "xgb_model_simple.joblib"):
+def _load_model_dict_simple(filename: str = "new_model_mono.joblib"):
     p = Path(__file__).resolve().parents[1] / "models" / filename
     if not p.exists():
         raise FileNotFoundError(f"Model not found: {p}")
@@ -21,7 +21,7 @@ def _load_model_dict_simple(filename: str = "xgb_model_simple.joblib"):
 
 def prediction():
     """คืน DataFrame สำหรับกราฟ Predicted (+ CI ถ้ามี)"""
-    model, feature_list_trained, q_abs = _load_model_dict_simple("xgb_model_simple.joblib")
+    model, feature_list_trained, q_abs = _load_model_dict_simple("new_model_mono.joblib")
     X, y, _ = dataModel() 
 
     missing = [c for c in feature_list_trained if c not in X.columns]

@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-MODEL_FILE = "xgb_model_simple.joblib"
+MODEL_FILE = "new_model_mono.joblib"
 
 def load_model_dict(path: str):
     obj = joblib.load(path)
