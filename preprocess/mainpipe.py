@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, List, Optional
 from preprocess.ga import GeneticAlgorithm
+from agent.rag_agent import ask_alert
 
 
 def ethanol_pipeline_full_with_ga(
@@ -274,14 +275,19 @@ def _heuristic_narrative(label: str, y_pred: float, low_band: Optional[float],
     if not actions:
         actions = ["ทวนสอบสัญญาณหน้างาน", "ตรวจสอบข้อจำกัดการเดินเครื่อง", "ยืนยันข้อมูลขาเข้า"]
 
-    caveats = []
+    caveats = ""
     if low_band is not None and y_pred is not None:
-        caveats.append(f"ตรวจสอบว่า ŷ={y_pred:.4f} ไม่ต่ำกว่า band ล่าง ({low_band:.4f}) ต่อเนื่องหลายช่วง")
+        caveats += f"ตรวจสอบว่า ŷ={y_pred:.4f} ไม่ต่ำกว่า band ล่าง ({low_band:.4f}) ต่อเนื่องหลายช่วง"
     if shap_top:
-        caveats.append("พิจารณาฟีเจอร์ที่มีผลมาก (SHAP) ก่อนปรับจริง")
-    caveats.append("ยืนยัน constraint/ความปลอดภัยกระบวนการก่อนปรับทุกครั้ง")
+        caveats += "พิจารณาฟีเจอร์ที่มีผลมาก (SHAP) ก่อนปรับจริง"
+    caveats += "ยืนยัน constraint/ความปลอดภัยกระบวนการก่อนปรับทุกครั้ง"
+    
+    caveats += "จากข้อมูลช่วยเขียนคำแนะนำสำหรับข้อมูลต่อไปนี้ออกมา"
 
-    return {"summary": summary, "actions": actions, "caveats": caveats}
+    caveats_advice = ask_alert(caveats)
+    print(f"[mainpipe][opt]: {caveats_advice}")
+
+    return {"summary": summary, "actions": actions, "caveats": [caveats_advice]}
 
 def ga_shap_narrative(
     X_one: pd.DataFrame,

@@ -14,6 +14,7 @@ from preprocess.utils import load_model_dict_simple, compute_q_abs_from_train, r
 from preprocess.mainpipe import ga_shap_narrative
 from preprocess.ga import GeneticAlgorithm
 from preprocess.detector import AnomalyDetector
+from agent.rag_agent import normalize_output
 
 TARGET_COL = "CF-Total-Today"
 ROLL_W     = int(os.getenv("ROLL_W", "14"))
@@ -88,7 +89,14 @@ def _build_alert_card(ts, y_true, y_pred, lo, label, reasons, z, *,
             g = res.get("ga", {})
             details["ga"]["suggestion"] = g.get("suggestion", {})
             details["ga"]["best_score"] = g.get("best_score", None)
-            details["genai"] = res.get("gen_ai", details["genai"])
+            # details["genai"] = res.get("gen_ai", details["genai"])
+            gen_ai_res = res.get("gen_ai", details["genai"])
+            # ถ้าเป็น string ให้ normalize
+            if isinstance(gen_ai_res, str):
+                gen_ai_res = normalize_output(gen_ai_res)
+
+            details["genai"] = gen_ai_res
+
         except Exception as e:
             details["genai"]["summary"] = f"(pipeline error: {e})"
 
@@ -223,4 +231,4 @@ def on_disconnect():
     print("[socket] client disconnected")
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=8080, debug=True)
+    socketio.run(app, host="0.0.0.0", port=3000, debug=True)
