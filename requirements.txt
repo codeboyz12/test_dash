@@ -21,6 +21,7 @@ flask=3.0.3
 flask-compress=1.13
 fonttools=4.51.0
 freetype=2.13.3
+Flask-SocketIO=5.5.1
 idna=3.7
 importlib-metadata=7.0.1
 importlib_resources=6.4.0
