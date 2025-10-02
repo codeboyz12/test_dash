@@ -268,26 +268,32 @@ def _heuristic_narrative(label: str, y_pred: float, low_band: Optional[float],
         "normal": "คาดการณ์อยู่ในช่วงปกติ",
     }.get(label, "พบสัญญาณที่ต้องติดตาม")
 
-    # actions = []
-    # if ga_sug:
-    #     for k, v in list(ga_sug.items())[:3]:
-    #         actions.append(f"ปรับ {k} → {v:.3f} ตามข้อเสนอ GA")
-    # if not actions:
-    #     actions = ["ทวนสอบสัญญาณหน้างาน", "ตรวจสอบข้อจำกัดการเดินเครื่อง", "ยืนยันข้อมูลขาเข้า"]
+    actions = []
+    ga_prompt = ""
+    if ga_sug:
+        for k, v in list(ga_sug.items())[:3]:
+            actions.append(f"ปรับ {k} → {v:.3f} ตามข้อเสนอ GA")
+            ga_prompt += f"ฟีเจอร์ {k} มีค่า GA ที่ {v:.3f}"
+    if not actions:
+        actions = ["ทวนสอบสัญญาณหน้างาน", "ตรวจสอบข้อจำกัดการเดินเครื่อง", "ยืนยันข้อมูลขาเข้า"]
+        ga_prompt = "ไม่มีค่า GA"
+
+    caveats = ""
 
     actions = ""
     if low_band is not None and y_pred is not None:
         actions += f"ตรวจสอบว่า ŷ={y_pred:.4f} ไม่ต่ำกว่า band ล่าง ({low_band:.4f}) ต่อเนื่องหลายช่วง"
     if shap_top:
-        actions += "พิจารณาฟีเจอร์ที่มีผลมาก (SHAP) ก่อนปรับจริง"
-    actions += "ยืนยัน constraint/ความปลอดภัยกระบวนการก่อนปรับทุกครั้ง"
-    
-    actions += "จากข้อมูลช่วยเขียนคำแนะนำสำหรับข้อมูลต่อไปนี้ออกมา"
+        shap_texts = []
+        for feature, shap_val in shap_top:
+            shap_texts.append(f"ฟีเจอร์ {feature} มีค่า SHAP ที่ {shap_val:.4f}")
+        shap_prompt = " | ".join(shap_texts)
+    caveats += "ยืนยัน constraint/ความปลอดภัยกระบวนการก่อนปรับทุกครั้ง"
 
-    caveats_advice = ask_alert(actions)
-    print(f"[mainpipe][opt]: {caveats_advice}")
-    
-    return {"summary": summary, "actions": [caveats_advice]}
+    final_prompt = f"พิจรณาค่า GA ในแต่ละฟีเจอร์นี้ {ga_prompt}, {caveats} และ SHAP ต่อไปนี้ {shap_prompt} จากข้อมูลช่วยเขียนคำแนะนำสำหรับข้อมูลต่อไปนี้ออกมา"
+    caveats_advice = ask_alert(final_prompt)
+
+    return {"summary": summary, "actions": actions, "caveats": [caveats_advice]}
 
 def ga_shap_narrative(
     X_one: pd.DataFrame,
